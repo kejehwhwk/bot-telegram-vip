@@ -4,41 +4,60 @@ const app = express();
 
 app.use(express.json());
 
-// Configurações principais (depois podes colocar estas variáveis no Render)
+// Configurações principais obtidas das variáveis de ambiente do Render
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const VIP_GROUP_CHAT_ID = process.env.VIP_GROUP_CHAT_ID; // ID do teu canal/grupo VIP
-const PORT = process.env.PORT || 3000;
+const VIP_GROUP_CHAT_ID = process.env.VIP_GROUP_CHAT_ID;
+const PORT = process.env.PORT || 10000;
 
 // Rota de teste para ver se o servidor está online no Render
 app.get('/', (req, res) => {
-    res.send('Bot de Análise Esportiva a funcionar com sucesso!');
+    res.send('Bot do Telegram a funcionar com sucesso!');
+});
+
+// Webhook para receber as mensagens do Telegram (comandos como /start)
+app.post(`/bot${TELEGRAM_TOKEN}`, async (req, res) => {
+    const update = req.body;
+
+    try {
+        if (update.message && update.message.text) {
+            const chatId = update.message.chat.id;
+            const text = update.message.text;
+
+            // Se o utilizador enviar /start, o bot responde com as instruções do Pix
+            if (text.startsWith('/start')) {
+                await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+                    chat_id: chatId,
+                    text: `🚀 **Bem-vindo à Alavancagem!**\n\nO acesso ao nosso grupo VIP de alavancagem custa apenas **R$ 2,00**.\n\n🔑 **Chave Pix (copia e cola):**\n\`93d480cc-e6c2-4b67-a0f0-992a9bbbe83b\`\n\n⚠️ *Importante:* Assim que fizeres o pagamento, o sistema deteta e envia o teu link de acesso exclusivo automaticamente na hora!`
+                });
+            }
+        }
+        res.status(200).send({ status: 'ok' });
+    } catch (error) {
+        console.error('Erro ao processar mensagem do Telegram:', error);
+        res.status(500).send({ error: 'Erro interno' });
+    }
 });
 
 // Webhook para receber os avisos de pagamento aprovado da Gateway Pix
 app.post('/webhook-pix', async (req, res) => {
     const paymentData = req.body;
-    
-    // Aqui podes validar os dados que a tua gateway de pagamento envia (ex: status aprovado)
     console.log('Pagamento recebido:', paymentData);
 
     try {
-        // Exemplo: se o pagamento foi aprovado, geramos um link de convite único no Telegram
         if (paymentData.status === 'approved' || paymentData.status === 'PAID') {
-            const telegramUserChatId = paymentData.user_telegram_id; // ID do comprador recolhido no fluxo
+            const telegramUserChatId = paymentData.user_telegram_id;
 
-            // Pedir ao Telegram um link de convite de uso único para o grupo VIP
             const inviteResponse = await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/createChatInviteLink`, {
                 chat_id: VIP_GROUP_CHAT_ID,
-                member_limit: 1, // Link válido apenas para 1 pessoa
-                expire_date: Math.floor(Date.now() / 1000) + (3600 * 24) // Expira em 24 horas se não for usado
+                member_limit: 1,
+                expire_date: Math.floor(Date.now() / 1000) + (3600 * 24)
             });
 
             const inviteLink = inviteResponse.data.result.invite_link;
 
-            // Enviar o link de acesso diretamente para o comprador no Telegram
             await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
                 chat_id: telegramUserChatId,
-                text: `🎉 Pagamento aprovado com sucesso!\n\nAqui tens o teu link de acesso exclusivo e único para o grupo VIP do @analise.esportiva.pro:\n${inviteLink}\n\nBem-vindo à equipa!`
+                text: `🎉 **Pagamento aprovado com sucesso!**\n\nAqui tens o teu link de acesso exclusivo para o grupo VIP:\n${inviteLink}\n\nBem-vindo à equipa!`
             });
         }
 
